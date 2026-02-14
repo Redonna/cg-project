@@ -1,13 +1,923 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>cg-project</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Café Noir — 3D</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0806; overflow:hidden; font-family:'Georgia',serif; }
+canvas { display:block; }
+
+/* ── LOADING ── */
+#loading {
+  position:fixed; inset:0; background:#0a0806;
+  display:flex; align-items:center; justify-content:center; flex-direction:column;
+  z-index:300; transition:opacity 1.2s ease;
+}
+#loading h1 { color:#c8a96e; font-size:28px; letter-spacing:10px; text-transform:uppercase; margin-bottom:8px; }
+#loading p  { color:#5a3d20; font-size:11px; letter-spacing:3px; margin-bottom:28px; }
+#bar  { width:240px; height:2px; background:rgba(200,160,80,0.12); }
+#prog { height:100%; background:linear-gradient(90deg,#8b5e2a,#c8a96e); width:0; transition:width 0.18s; }
+
+/* ── TITLE ── */
+#title { position:fixed; top:22px; left:50%; transform:translateX(-50%); color:#c8a96e; font-size:20px; letter-spacing:7px; text-transform:uppercase; text-shadow:0 0 30px rgba(200,160,80,0.4); pointer-events:none; opacity:0; transition:opacity 1s ease .5s; }
+#title.show { opacity:1; }
+#sub   { position:fixed; top:50px;  left:50%; transform:translateX(-50%); color:#7a5535; font-size:10px; letter-spacing:4px; pointer-events:none; opacity:0; transition:opacity 1s ease .8s; }
+#sub.show   { opacity:1; }
+
+/* ── CAMERA CONTROLS ── */
+#controls { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); display:flex; gap:10px; opacity:0; transition:opacity 1s ease 1s; }
+#controls.show { opacity:1; }
+.btn {
+  background:rgba(12,8,4,.88); border:1px solid rgba(150,100,45,.35);
+  color:#9a7040; font-family:'Georgia',serif; font-size:10px; letter-spacing:2px;
+  padding:9px 20px; cursor:pointer; text-transform:uppercase;
+  transition:all .25s; backdrop-filter:blur(10px); border-radius:1px;
+}
+.btn:hover  { border-color:rgba(200,160,80,.6); color:#c8a96e; background:rgba(80,40,10,.4); }
+.btn.active { border-color:#c8a96e; color:#f0d090; background:rgba(100,60,15,.45); }
+
+/* ── HINT ── */
+#hint { position:fixed; bottom:62px; left:50%; transform:translateX(-50%); color:rgba(130,85,35,.45); font-size:9px; letter-spacing:2px; text-transform:uppercase; pointer-events:none; opacity:0; transition:opacity 1s ease 1.4s; }
+#hint.show { opacity:1; }
+
+/* ── HOVER TOOLTIP ── */
+#tooltip {
+  position:fixed; pointer-events:none; z-index:50;
+  background:rgba(10,6,3,.92); border:1px solid rgba(180,130,50,.4);
+  color:#c8a96e; font-size:10px; letter-spacing:2px; text-transform:uppercase;
+  padding:8px 14px; border-radius:2px; backdrop-filter:blur(8px);
+  opacity:0; transition:opacity .2s; white-space:nowrap;
+}
+#tooltip.show { opacity:1; }
+
+/* ── MENU OVERLAY ── */
+#menu-overlay {
+  position:fixed; inset:0; z-index:200;
+  background:rgba(5,3,1,.78); backdrop-filter:blur(12px);
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none;
+  transition:opacity .55s cubic-bezier(.4,0,.2,1);
+}
+#menu-overlay.open { opacity:1; pointer-events:all; }
+
+#menu-card {
+  width:min(680px, 92vw); max-height:88vh; overflow-y:auto;
+  background:rgba(14,9,4,.96); border:1px solid rgba(180,130,50,.35);
+  padding:48px 52px; position:relative;
+  transform:translateY(28px) scale(.97);
+  transition:transform .55s cubic-bezier(.4,0,.2,1);
+  scrollbar-width:thin; scrollbar-color:#5a3a18 transparent;
+}
+#menu-overlay.open #menu-card { transform:translateY(0) scale(1); }
+
+#menu-card::-webkit-scrollbar { width:4px; }
+#menu-card::-webkit-scrollbar-thumb { background:#5a3a18; border-radius:2px; }
+
+#menu-close {
+  position:absolute; top:18px; right:22px;
+  color:#5a3820; font-size:22px; cursor:pointer; line-height:1;
+  transition:color .2s;
+}
+#menu-close:hover { color:#c8a96e; }
+
+.menu-header { text-align:center; margin-bottom:36px; border-bottom:1px solid rgba(180,130,50,.2); padding-bottom:28px; }
+.menu-header h2 { color:#c8a96e; font-size:24px; letter-spacing:8px; text-transform:uppercase; margin-bottom:6px; }
+.menu-header p  { color:#5a3a20; font-size:10px; letter-spacing:3px; text-transform:uppercase; }
+
+.menu-section { margin-bottom:32px; }
+.menu-section h3 { color:#9a7040; font-size:10px; letter-spacing:4px; text-transform:uppercase; margin-bottom:16px; padding-bottom:8px; border-bottom:1px solid rgba(150,100,40,.15); }
+.menu-item { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+.menu-item-name  { color:#d0b880; font-size:13px; letter-spacing:.5px; }
+.menu-item-desc  { color:#5a3a20; font-size:10px; letter-spacing:.5px; margin-top:2px; }
+.menu-item-price { color:#8a6030; font-size:12px; letter-spacing:1px; flex-shrink:0; margin-left:20px; }
+.menu-item-wrap  { flex:1; }
+.dots { flex:1; border-bottom:1px dotted rgba(100,70,30,.25); margin:0 10px 3px; }
+
+/* ── GLB STATUS BADGES ── */
+#glb-status {
+  position:fixed; top:22px; right:22px;
+  display:flex; flex-direction:column; gap:7px;
+  z-index:50; opacity:0; transition:opacity 1s ease 1.2s;
+}
+#glb-status.show { opacity:1; }
+.glb-badge {
+  display:flex; align-items:center; gap:8px;
+  background:rgba(10,6,3,.88); border:1px solid rgba(100,70,25,.3);
+  padding:7px 14px; border-radius:2px; backdrop-filter:blur(8px);
+  font-size:9px; letter-spacing:2px; text-transform:uppercase; color:#5a3a18;
+  cursor:pointer; transition:all .25s;
+}
+.glb-badge:hover  { border-color:rgba(180,130,50,.5); color:#c8a96e; }
+.glb-badge .dot   { width:6px; height:6px; border-radius:50%; background:#3a2810; transition:background .3s; flex-shrink:0; }
+.glb-badge.loaded .dot   { background:#5a9a40; box-shadow:0 0 6px rgba(90,154,64,.6); }
+.glb-badge.loading .dot  { background:#c8a040; animation:blink .8s infinite; }
+.glb-badge .fname { max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+/* ── INTERACTION PULSE (ring on clickable) ── */
+.pulse-ring {
+  position:fixed; border-radius:50%;
+  border:2px solid rgba(200,160,80,.6);
+  pointer-events:none; animation:pulseOut 1.2s ease-out forwards;
+  transform:translate(-50%,-50%);
+}
+@keyframes pulseOut { 0%{width:0;height:0;opacity:.8} 100%{width:60px;height:60px;opacity:0} }
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <h1>Café Noir</h1>
+  <p>Building your space…</p>
+  <div id="bar"><div id="prog"></div></div>
+</div>
+
+<!-- UI Chrome -->
+<div id="title">Café Noir</div>
+<div id="sub">A Modern Coffee House</div>
+
+<div id="controls">
+  <button class="btn active" id="b-iso"     onclick="cam('iso')">Isometric</button>
+  <button class="btn"        id="b-door"    onclick="cam('door')">Entrance</button>
+  <button class="btn"        id="b-counter" onclick="cam('counter')">Counter</button>
+  <button class="btn"        id="b-seating" onclick="cam('seating')">Seating</button>
+  <button class="btn"        id="b-top"     onclick="cam('top')">Overhead</button>
+</div>
+<div id="hint">Click objects · Drag orbit · Scroll zoom</div>
+
+<!-- Hover tooltip -->
+<div id="tooltip"></div>
+
+<!-- GLB status panel -->
+<div id="glb-status">
+  <div class="glb-badge" id="badge-tables"    onclick="triggerGLBLoad('tables')">
+    <span class="dot"></span><span class="fname">tables.glb</span>
+  </div>
+  <div class="glb-badge" id="badge-bookshelf" onclick="triggerGLBLoad('bookshelf')">
+    <span class="dot"></span><span class="fname">bookshelf.glb</span>
+  </div>
+  <div class="glb-badge" id="badge-sofa"      onclick="triggerGLBLoad('sofa')">
+    <span class="dot"></span><span class="fname">sofa.glb</span>
+  </div>
+  <div class="glb-badge" id="badge-menu"      onclick="triggerGLBLoad('menu')">
+    <span class="dot"></span><span class="fname">menu.glb</span>
+  </div>
+</div>
+
+<!-- Hidden file input for GLB -->
+<input type="file" id="glb-file-input" accept=".glb,.gltf" style="display:none">
+
+<!-- Menu Overlay -->
+<div id="menu-overlay">
+  <div id="menu-card">
+    <span id="menu-close" onclick="closeMenu()">✕</span>
+    <div class="menu-header">
+      <h2>Café Noir</h2>
+      <p>Est. 2024 · Handcrafted with love</p>
+    </div>
+
+    <div class="menu-section">
+      <h3>Espresso Bar</h3>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Espresso</div><div class="menu-item-desc">Single origin, double extraction</div></div><span class="dots"></span><span class="menu-item-price">€2.80</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Cortado</div><div class="menu-item-desc">Equal parts espresso & steamed milk</div></div><span class="dots"></span><span class="menu-item-price">€3.40</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Flat White</div><div class="menu-item-desc">Double ristretto, microfoam</div></div><span class="dots"></span><span class="menu-item-price">€3.80</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Latte</div><div class="menu-item-desc">Smooth, velvety, your choice of milk</div></div><span class="dots"></span><span class="menu-item-price">€4.20</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Pour Over</div><div class="menu-item-desc">Ethiopian Yirgacheffe, bright & floral</div></div><span class="dots"></span><span class="menu-item-price">€4.80</span></div>
+    </div>
+
+    <div class="menu-section">
+      <h3>Cold Brew & Iced</h3>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Cold Brew</div><div class="menu-item-desc">18-hour steep, served over stone ice</div></div><span class="dots"></span><span class="menu-item-price">€4.50</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Iced Matcha Latte</div><div class="menu-item-desc">Ceremonial grade, oat milk</div></div><span class="dots"></span><span class="menu-item-price">€5.20</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Sparkling Tonic Coffee</div><div class="menu-item-desc">Espresso over tonic, yuzu twist</div></div><span class="dots"></span><span class="menu-item-price">€5.50</span></div>
+    </div>
+
+    <div class="menu-section">
+      <h3>Food</h3>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Almond Croissant</div><div class="menu-item-desc">Twice-baked, frangipane, toasted almonds</div></div><span class="dots"></span><span class="menu-item-price">€4.20</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Pain au Chocolat</div><div class="menu-item-desc">Valrhona dark chocolate, laminated dough</div></div><span class="dots"></span><span class="menu-item-price">€3.80</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Avocado Toast</div><div class="menu-item-desc">Sourdough, heirloom tomato, dukkah</div></div><span class="dots"></span><span class="menu-item-price">€9.50</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Açaí Bowl</div><div class="menu-item-desc">Granola, seasonal fruit, honey</div></div><span class="dots"></span><span class="menu-item-price">€10.80</span></div>
+    </div>
+
+    <div class="menu-section">
+      <h3>Wines & Soft</h3>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Natural Orange Wine</div><div class="menu-item-desc">Skin-contact, funky & complex</div></div><span class="dots"></span><span class="menu-item-price">€9.00</span></div>
+      <div class="menu-item"><div class="menu-item-wrap"><div class="menu-item-name">Sparkling Water</div><div class="menu-item-desc">San Pellegrino 750ml</div></div><span class="dots"></span><span class="menu-item-price">€3.50</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+//  RENDERER
+// ══════════════════════════════════════════════════════════════════════════════
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0806);
+scene.fog = new THREE.FogExp2(0x0a0806, 0.022);
+
+const camera = new THREE.PerspectiveCamera(52, innerWidth/innerHeight, 0.05, 120);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ORBIT CONTROLS
+// ══════════════════════════════════════════════════════════════════════════════
+let isDragging=false, isRightDrag=false, prevX=0, prevY=0;
+let sph = { theta:Math.PI*0.22, phi:Math.PI*0.28, r:14 };
+let orbitCenter = new THREE.Vector3(1,1.2,0);
+let currentCam = 'iso';
+
+function updateOrbit(){
+  const x = sph.r*Math.sin(sph.phi)*Math.sin(sph.theta);
+  const y = sph.r*Math.cos(sph.phi);
+  const z = sph.r*Math.sin(sph.phi)*Math.cos(sph.theta);
+  camera.position.set(orbitCenter.x+x,orbitCenter.y+y,orbitCenter.z+z);
+  camera.lookAt(orbitCenter);
+}
+
+renderer.domElement.addEventListener('mousedown',e=>{
+  isDragging=true; isRightDrag=(e.button===2);
+  prevX=e.clientX; prevY=e.clientY;
+});
+renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('mouseup',()=>isDragging=false);
+addEventListener('mousemove',e=>{
+  if(!isDragging||currentCam!=='iso') return;
+  const dx=e.clientX-prevX, dy=e.clientY-prevY;
+  if(!isRightDrag){
+    sph.theta -= dx*0.006;
+    sph.phi = Math.max(0.08,Math.min(Math.PI*0.48,sph.phi-dy*0.006));
+  } else {
+    const right=new THREE.Vector3(); camera.getWorldDirection(right);
+    right.cross(camera.up).normalize();
+    orbitCenter.addScaledVector(right,-dx*0.015);
+    orbitCenter.y += dy*0.015;
+  }
+  prevX=e.clientX; prevY=e.clientY;
+  updateOrbit();
+});
+renderer.domElement.addEventListener('wheel',e=>{
+  if(currentCam!=='iso') return;
+  sph.r=Math.max(3,Math.min(28,sph.r+e.deltaY*0.02)); updateOrbit();
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CAMERA PRESETS
+// ══════════════════════════════════════════════════════════════════════════════
+const presets = {
+  iso:     {pos:[10,9,10],    look:[1,1.2,0]},
+  door:    {pos:[0,2.5,12],   look:[0,1.6,0]},
+  counter: {pos:[4,2.2,2],    look:[3,1.3,-3]},
+  seating: {pos:[-4,2.5,4],   look:[-3,1.2,-1]},
+  top:     {pos:[1,16,0],     look:[1,0,0]},
+};
+let camTarget={pos:new THREE.Vector3(...presets.iso.pos),look:new THREE.Vector3(...presets.iso.look)};
+let camAnimT=0, camAnimating=false;
+let camFrom={pos:new THREE.Vector3(),look:new THREE.Vector3()};
+
+window.cam=function(name){
+  document.querySelectorAll('.btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('b-'+name).classList.add('active');
+  currentCam=name;
+  camFrom.pos.copy(camera.position); camFrom.look.copy(orbitCenter);
+  camTarget.pos.set(...presets[name].pos); camTarget.look.set(...presets[name].look);
+  camAnimT=0; camAnimating=true;
+};
+camera.position.set(...presets.iso.pos); camera.lookAt(...presets.iso.look);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MATERIAL HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+function mat(col,rough=0.7,metal=0,opts={}){
+  return new THREE.MeshStandardMaterial({color:col,roughness:rough,metalness:metal,...opts});
+}
+const M = {
+  floor:      mat(0x9a8870,0.55),
+  floorGrout: mat(0x6a5840,0.8),
+  wallMain:   mat(0x6e5d4a,0.85),
+  wallLight:  mat(0x8a7560,0.8),
+  ceilDark:   mat(0x1e1510,0.95),
+  trim:       mat(0x1a1208,0.6,0.05),
+  counterDark:mat(0x1a1510,0.35,0.05),
+  counterTop: mat(0x252018,0.2,0.15),
+  shelfDark:  mat(0x1e1810,0.5),
+  shelfWood:  mat(0x5a3e28,0.55),
+  woodMed:    mat(0x6b4c30,0.6),
+  steelBrush: mat(0x888880,0.25,0.8),
+  steelDark:  mat(0x3a3830,0.3,0.7),
+  brass:      mat(0xb08030,0.2,0.85),
+  chrome:     mat(0xd0d0d0,0.05,0.95),
+  glass:      new THREE.MeshPhysicalMaterial({color:0xc0dde8,roughness:0,transparent:true,opacity:0.15,transmission:0.9,thickness:0.5,envMapIntensity:2,side:THREE.DoubleSide}),
+  glassTint:  new THREE.MeshPhysicalMaterial({color:0x9ab8c0,roughness:0.02,transparent:true,opacity:0.22,transmission:0.88,side:THREE.DoubleSide}),
+  display:    new THREE.MeshPhysicalMaterial({color:0xd8eef4,roughness:0,transparent:true,opacity:0.35,transmission:0.7}),
+  chalkboard: mat(0x0f1a12,0.95),
+  chalkText:  mat(0xddd5c0,0.95),
+  tileFloor:  mat(0xb0a090,0.45,0.02),
+  black:      mat(0x080606,0.4,0.1),
+  entryMat:   mat(0x101010,0.95),
+  steelEquip: mat(0x888880,0.15,0.85),
+  plastic:    mat(0x1a1a18,0.6,0.05),
+  copper:     mat(0xb06820,0.2,0.85),
+  fruitG:     mat(0x2d6b20,0.7),
+  fruitR:     mat(0xb02010,0.7),
+  fruitO:     mat(0xe07010,0.7),
+  fruitY:     mat(0xd4b010,0.7),
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  GEOMETRY HELPERS
+// ══════════════════════════════════════════════════════════════════════════════
+const GRP=()=>{const g=new THREE.Group();return g;};
+function B(w,h,d,m){const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.castShadow=true;o.receiveShadow=true;return o;}
+function C(rt,rb,h,seg,m){const o=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),m);o.castShadow=true;o.receiveShadow=true;return o;}
+function S(r,m,seg=16){const o=new THREE.Mesh(new THREE.SphereGeometry(r,seg,seg),m);o.castShadow=true;return o;}
+function place(o,x,y,z,rx=0,ry=0,rz=0){o.position.set(x,y,z);o.rotation.set(rx,ry,rz);return o;}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ROOM  13 wide (X), 10 deep (Z), 3.6 high (Y)
+// ══════════════════════════════════════════════════════════════════════════════
+const RW=13,RD=10,RH=3.6;
+
+// ── FLOOR ────────────────────────────────────────────────────────────────────
+const floorBase=B(RW,0.12,RD,M.tileFloor); place(floorBase,0,-0.06,0); scene.add(floorBase);
+for(let i=-6;i<=6;i++){const g=B(0.03,0.01,RD,M.floorGrout);g.position.set(i,0.005,0);scene.add(g);}
+for(let i=-5;i<=5;i++){const g=B(RW,0.01,0.03,M.floorGrout);g.position.set(0,0.005,i);scene.add(g);}
+const gloss=new THREE.Mesh(new THREE.PlaneGeometry(7,4),mat(0x6a5a48,0.25,0.08,{transparent:true,opacity:0.35}));
+gloss.rotation.x=-Math.PI/2;gloss.position.set(2,0.002,-2.5);scene.add(gloss);
+
+// ── WALLS ─────────────────────────────────────────────────────────────────────
+const backWall=B(RW,RH,0.18,M.wallMain);place(backWall,0,RH/2,-RD/2);scene.add(backWall);
+const leftWall=B(0.18,RH,RD,M.wallMain);place(leftWall,-RW/2,RH/2,0);scene.add(leftWall);
+const rightWall=B(0.18,RH,RD,M.wallLight);place(rightWall,RW/2,RH/2,0);scene.add(rightWall);
+const frontWallL=B(3.5,RH,0.18,M.wallMain);place(frontWallL,-4.75,RH/2,RD/2);scene.add(frontWallL);
+const frontWallR=B(3.5,RH,0.18,M.wallMain);place(frontWallR,4.75,RH/2,RD/2);scene.add(frontWallR);
+const frontHeader=B(6,0.6,0.18,M.wallMain);place(frontHeader,0,RH-0.3,RD/2);scene.add(frontHeader);
+
+// Left wall wood planks
+for(let i=0;i<14;i++){
+  const pl=B(0.02,RH*0.6,0.95,mat(0x3a2c1e+(i*0x050200&0xffffff),0.7));
+  pl.position.set(-RW/2+0.12,RH*0.3,-4+i*0.65);scene.add(pl);
+}
+
+// ── CEILING ───────────────────────────────────────────────────────────────────
+const ceil=B(RW+0.4,0.16,RD+0.4,M.ceilDark);place(ceil,0,RH+0.08,0);scene.add(ceil);
+for(let i=0;i<4;i++){const s=B(RW,0.04,0.9,mat(0x141008,0.95));s.position.set(0,RH-0.01,-3.5+i*2.2);scene.add(s);}
+
+// ── SKIRTINGS ─────────────────────────────────────────────────────────────────
+[B(RW,0.12,0.04,M.trim),B(0.04,0.12,RD,M.trim),B(0.04,0.12,RD,M.trim)].forEach((s,i)=>{
+  [[ 0,0.06,-RD/2+0.11,0,0,0],[-RW/2+0.11,0.06,0,0,0,0],[RW/2-0.11,0.06,0,0,0,0]][i];
+  place(s,...[[0,0.06,-RD/2+0.11],[- RW/2+0.11,0.06,0],[RW/2-0.11,0.06,0]][i]);scene.add(s);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  GLASS FACADE & DOOR
+// ══════════════════════════════════════════════════════════════════════════════
+const gp1=B(2.6,3.0,0.05,M.glass);place(gp1,-1.5,1.65,RD/2);scene.add(gp1);
+const gp2=B(2.6,3.0,0.05,M.glass);place(gp2,1.5,1.65,RD/2);scene.add(gp2);
+const transom=B(6.2,0.78,0.05,M.glassTint);place(transom,0,3.25,RD/2);scene.add(transom);
+// Frame
+[0.22,3.08,3.65].forEach(y=>{const h=B(6.3,0.06,0.08,M.steelDark);h.position.set(0,y,RD/2);scene.add(h);});
+[-3.0,-0.02,0.02,3.0].forEach(x=>{const v=B(0.06,3.5,0.08,M.steelDark);v.position.set(x,1.8,RD/2);scene.add(v);});
+const dfL=B(0.1,3.0,0.12,M.trim);place(dfL,-0.85,1.65,RD/2);scene.add(dfL);
+const dfR=B(0.1,3.0,0.12,M.trim);place(dfR,0.85,1.65,RD/2);scene.add(dfR);
+const dfT=B(1.72,0.1,0.12,M.trim);place(dfT,0,3.12,RD/2);scene.add(dfT);
+const dg1=B(0.74,2.88,0.04,M.glass);place(dg1,-0.45,1.62,RD/2);scene.add(dg1);
+const dg2=B(0.74,2.88,0.04,M.glass);place(dg2,0.45,1.62,RD/2);scene.add(dg2);
+// Handles
+[[-0.15],[0.15]].forEach(([x])=>{
+  const bar=C(0.018,0.018,0.42,8,M.steelBrush);bar.rotation.x=Math.PI/2;bar.position.set(x,1.25,RD/2+0.06);scene.add(bar);
+});
+// Signage above
+const signBg=B(3.0,0.55,0.1,mat(0x1a1208,0.4,0.1));signBg.position.set(0,RH+0.35,RD/2+0.06);scene.add(signBg);
+const signText=B(2.4,0.28,0.02,mat(0xd4a860,0.2,0.3,{emissive:0xc8902a,emissiveIntensity:0.6}));signText.position.set(0,RH+0.35,RD/2+0.12);scene.add(signText);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MAIN COUNTER (fluted, diagonal)
+// ══════════════════════════════════════════════════════════════════════════════
+function buildCounterSeg(g,w,h,d,x,y,z,ry=0){
+  const body=B(w,h,d,M.counterDark);place(body,x,y,z,0,ry,0);g.add(body);
+  const top=B(w+0.04,0.055,d+0.06,M.counterTop);place(top,x,y+h/2+0.028,z,0,ry,0);g.add(top);
+  const ribMat=mat(0x0e0c08,0.4,0.08);
+  for(let rx2=-w/2+0.1;rx2<=w/2-0.1;rx2+=0.12){
+    const rib=B(0.035,h*0.85,d+0.01,ribMat);rib.position.set(x+rx2,y-0.04,z);rib.rotation.y=ry;g.add(rib);
+  }
+  const lip=B(w+0.02,0.04,0.06,mat(0x181410,0.3,0.15));lip.position.set(x,y+h/2+0.062,z-(d/2+0.01));lip.rotation.y=ry;g.add(lip);
+}
+const cg=GRP();
+buildCounterSeg(cg,7.0,1.08,0.78,1.5,0.54,-2.0);
+buildCounterSeg(cg,0.78,1.08,2.5,-1.65,0.54,-2.0);
+buildCounterSeg(cg,2.2,1.08,0.78,-0.6,0.54,-0.82);
+scene.add(cg);
+
+// Display case
+function addDisplayCase(){
+  const dcBase=B(2.8,0.55,0.62,M.counterDark);place(dcBase,-0.6,1.41,-0.82);scene.add(dcBase);
+  [B(2.8,0.5,0.03,M.display),B(2.8,0.5,0.03,M.display)].forEach((p,i)=>{p.position.set(-0.6,1.39,i===0?-0.52:-1.12);scene.add(p);});
+  const dcT=B(2.8,0.03,0.62,M.display);dcT.position.set(-0.6,1.64,-0.82);scene.add(dcT);
+  // Pastries
+  for(let i=0;i<8;i++){const b=new THREE.Mesh(new THREE.SphereGeometry(0.07,12,8),mat(i%3===0?0xc87040:i%3===1?0xd09850:0x9a6030,0.9));b.scale.y=0.55;b.position.set(-1.8+i*0.32,1.19,-0.82);b.castShadow=true;scene.add(b);}
+  for(let i=0;i<5;i++){const p=new THREE.Mesh(new THREE.TorusGeometry(0.07,0.04,8,12),mat(0xc07030,0.9));p.rotation.x=Math.PI/2;p.position.set(-1.6+i*0.35,1.2,-0.75);p.castShadow=true;scene.add(p);}
+}
+addDisplayCase();
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  BACK BAR & SHELVING
+// ══════════════════════════════════════════════════════════════════════════════
+const bbCounter=B(8.5,0.92,0.72,M.shelfDark);place(bbCounter,1.5,0.46,-4.82);scene.add(bbCounter);
+const bbTop=B(8.6,0.052,0.76,M.counterTop);place(bbTop,1.5,0.95,-4.82);scene.add(bbTop);
+const shelfUnit=B(8.8,2.9,0.32,M.shelfDark);place(shelfUnit,1.5,2.25,-4.94);scene.add(shelfUnit);
+const shelfMat2=mat(0x5a3e28,0.5,0.02);
+[1.1,1.7,2.3,2.85].forEach(y=>{const s=B(8.5,0.045,0.28,shelfMat2);s.position.set(1.5,y,-4.82);scene.add(s);});
+[-2.8,-0.5,1.8].forEach(x=>{const d=B(0.04,2.7,0.3,M.shelfDark);d.position.set(x,2.25,-4.86);scene.add(d);});
+
+// Bottles, mugs, jars
+const bCols=[0x2a4020,0x5a2010,0x3a2a50,0x204030,0x502010];
+for(let i=0;i<20;i++){
+  const x=-2.5+i*0.42; if(Math.abs(x)>4.1)continue;
+  const b=C(0.04,0.05,0.28+Math.random()*0.12,10,mat(bCols[i%5],0.25,0.1,{transparent:true,opacity:0.85}));
+  b.position.set(1.5+x-3.2,1.3,-4.8);scene.add(b);
+  const cap=C(0.022,0.022,0.04,8,M.steelDark);cap.position.set(1.5+x-3.2,1.47,-4.8);scene.add(cap);
+}
+for(let i=0;i<14;i++){
+  const cup=C(0.055,0.045,0.1,10,mat(i%4===0?0x2a2828:i%4===1?0xe8e0d4:i%4===2?0x3a3020:0xd0c8b8,0.85));
+  cup.position.set(-2.4+(i*0.55),1.77,-4.8);scene.add(cup);
+}
+for(let i=0;i<10;i++){
+  const j=C(0.06,0.065,0.14,10,mat([0x4080a0,0x80a040,0xd09030,0x6040a0][i%4],0.1,0,{transparent:true,opacity:0.7}));
+  j.position.set(-2.2+i*0.55,2.37,-4.8);scene.add(j);
+  const lid=C(0.065,0.065,0.02,10,M.steelBrush);lid.position.set(-2.2+i*0.55,2.45,-4.8);scene.add(lid);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ESPRESSO MACHINE
+// ══════════════════════════════════════════════════════════════════════════════
+const eMat=mat(0x888880,0.15,0.85);
+const eBody=B(0.82,0.52,0.48,eMat);place(eBody,-2.8,1.22,-4.72);scene.add(eBody);
+const eFront=B(0.8,0.42,0.1,eMat);place(eFront,-2.8,1.2,-4.48);scene.add(eFront);
+[-2.95,-2.65].forEach(x=>{
+  const gh=C(0.055,0.065,0.08,12,M.steelDark);gh.rotation.x=Math.PI/2;gh.position.set(x,1.12,-4.43);scene.add(gh);
+  [-0.03,0.03].forEach(dx=>{const sp=C(0.008,0.008,0.12,6,M.steelBrush);sp.rotation.x=Math.PI/2;sp.position.set(x+dx,1.07,-4.38);scene.add(sp);});
+});
+const eTop=B(0.84,0.04,0.5,M.chrome);place(eTop,-2.8,1.5,-4.72);scene.add(eTop);
+const eScreen=B(0.22,0.1,0.02,mat(0x0a2040,0.3,0.2,{emissive:0x0a3060,emissiveIntensity:0.5}));eScreen.position.set(-2.8,1.35,-4.47);scene.add(eScreen);
+const wand=C(0.012,0.012,0.22,6,M.steelBrush);wand.rotation.z=Math.PI/6;wand.position.set(-2.42,1.12,-4.68);scene.add(wand);
+const tray=B(0.88,0.03,0.22,M.steelBrush);tray.position.set(-2.8,0.98,-4.62);scene.add(tray);
+// Grinder
+const gr=B(0.22,0.52,0.22,M.plastic);gr.position.set(-1.9,1.22,-4.68);scene.add(gr);
+const grH=C(0.1,0.07,0.22,12,M.plastic);grH.position.set(-1.9,1.58,-4.68);scene.add(grH);
+// POS
+const pos=B(0.32,0.38,0.28,M.plastic);place(pos,3.2,1.14,-2.62);scene.add(pos);
+const posS=B(0.28,0.3,0.025,mat(0x101828,0.2,0.3,{emissive:0x102030,emissiveIntensity:0.8}));posS.position.set(3.2,1.15,-2.5);posS.rotation.x=-0.3;scene.add(posS);
+
+// ── SIDE COUNTER (right) ──────────────────────────────────────────────────────
+const sc=B(4.5,0.9,0.72,M.shelfDark);place(sc,5.0,0.45,-3.5);scene.add(sc);
+const scT=B(4.55,0.045,0.76,mat(0x252018,0.25,0.12));place(scT,5.0,0.925,-3.5);scene.add(scT);
+for(let i=0;i<4;i++){
+  const d=B(1.0,0.78,0.02,M.shelfDark);d.position.set(3.2+i*1.1,0.45,-3.15);scene.add(d);
+  const h=B(0.32,0.02,0.018,M.chrome);h.position.set(3.2+i*1.1,0.45,-3.14);scene.add(h);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CHALKBOARDS
+// ══════════════════════════════════════════════════════════════════════════════
+const cbMain=B(4.2,2.2,0.06,M.chalkboard);place(cbMain,3.0,2.5,-4.89);scene.add(cbMain);
+const cbFr=mat(0x2a1e10,0.5,0.05);
+[[3.0,3.62,-4.87],[3.0,1.38,-4.87],[0.87,2.5,-4.87],[5.13,2.5,-4.87]].forEach(([x,y,z],i)=>{
+  const f=i<2?B(4.4,0.07,0.07,cbFr):B(0.07,2.35,0.07,cbFr);f.position.set(x,y,z);scene.add(f);
+});
+for(let r=0;r<12;r++){const l=B(0.5+Math.random()*1.8,0.025,0.008,mat(0xccc4b0,0.98));l.position.set(2.4+Math.random()*1.2,3.4-r*0.18,-4.86);scene.add(l);}
+for(let i=0;i<8;i++){const d=B(0.06,0.025,0.008,mat(0xddd5be,0.98));d.position.set(4.9,3.3-i*0.22,-4.86);scene.add(d);}
+const cbSm=B(2.1,1.5,0.06,M.chalkboard);place(cbSm,-3.8,2.6,-4.89);scene.add(cbSm);
+[[-3.8,3.38,-4.87],[-3.8,1.88,-4.87],[-2.72,2.6,-4.87],[-4.88,2.6,-4.87]].forEach(([x,y,z],i)=>{
+  const f=i<2?B(2.2,0.06,0.06,cbFr):B(0.06,1.55,0.06,cbFr);f.position.set(x,y,z);scene.add(f);
+});
+for(let i=0;i<8;i++){const l=B(0.4+Math.random()*0.8,0.02,0.008,mat(0xccc4b0,0.98));l.position.set(-4.2+Math.random()*0.8,3.2-i*0.16,-4.86);scene.add(l);}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ARTWORK
+// ══════════════════════════════════════════════════════════════════════════════
+const paintBg=B(3.2,1.3,0.06,mat(0x4a3828,0.8));place(paintBg,-5.55,2.6,-1.5);scene.add(paintBg);
+const pFr=mat(0x1a1208,0.4,0.1);
+[[3.4,0.07,0.09,-5.55,3.27,-1.5],[3.4,0.07,0.09,-5.55,1.93,-1.5],[0.07,1.44,0.09,-6.22,2.6,-1.5],[0.07,1.44,0.09,-4.88,2.6,-1.5]].forEach(([w,h,d,x,y,z])=>{const f=B(w,h,d,pFr);f.position.set(x,y,z);scene.add(f);});
+const carBody=B(1.8,0.35,0.02,mat(0x1a1410,0.9));carBody.position.set(-5.55,2.5,-1.47);scene.add(carBody);
+const carWin=B(0.8,0.25,0.02,mat(0x2a3040,0.6));carWin.position.set(-5.45,2.68,-1.47);scene.add(carWin);
+const promoF=B(1.3,1.9,0.06,M.shelfDark);place(promoF,5.5,2.5,-4.89);scene.add(promoF);
+const promoI=B(1.1,1.7,0.02,mat(0x3a2810,0.85));promoI.position.set(5.5,2.5,-4.86);scene.add(promoI);
+const cofCup=C(0.2,0.25,0.5,12,mat(0xc8a860,0.7));cofCup.position.set(5.5,2.5,-4.85);scene.add(cofCup);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FRUIT STAND
+// ══════════════════════════════════════════════════════════════════════════════
+const fg=GRP();
+const fBase=B(0.88,0.82,0.72,M.shelfDark);fg.add(fBase);
+const fLip=B(0.92,0.04,0.76,mat(0x202018,0.3,0.2));fLip.position.y=0.43;fg.add(fLip);
+[0.08,0.22,0.36].forEach((y,i)=>{const r=B(0.8,0.035,0.22,mat(0x3a2c1e,0.6));r.position.set(0,y,-0.05+i*0.02);r.rotation.x=-0.1;fg.add(r);});
+const fCols=[M.fruitG,M.fruitR,M.fruitO,M.fruitY];
+for(let i=0;i<18;i++){const fr=S(0.055,fCols[i%4]);fr.position.set(-0.3+Math.random()*0.6,0.48+Math.floor(i/6)*0.12,-0.15+Math.random()*0.35);fg.add(fr);}
+fg.traverse(c=>{c.castShadow=true;c.receiveShadow=true;});
+place(fg,1.5,0.41,3.0);scene.add(fg);
+
+// ── ENTRY MAT ────────────────────────────────────────────────────────────────
+const entM=new THREE.Mesh(new THREE.PlaneGeometry(1.6,0.7),M.entryMat);entM.rotation.x=-Math.PI/2;entM.position.set(0,0.003,RD/2-0.8);entM.receiveShadow=true;scene.add(entM);
+
+// ── COUNTER SMALL ITEMS ───────────────────────────────────────────────────────
+for(let i=0;i<6;i++){const cup=C(0.04,0.035,0.09,8,mat(i%2===0?0xfafaf8:0x2a2020,0.85));cup.position.set(-0.8+i*0.28,1.02,-4.68);scene.add(cup);}
+for(let i=0;i<5;i++){const sc2=C(0.045-i*0.003,0.04-i*0.003,0.08,8,mat(i===0?0xfaf8f4:0x1a1818,0.85));sc2.position.set(-2.2,0.98+i*0.07,-4.68);scene.add(sc2);}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MENU.GLB PLACEHOLDER — clickable book on counter
+//  This will be replaced by menu.glb if loaded, but shows a placeholder book
+// ══════════════════════════════════════════════════════════════════════════════
+const menuGroup = new THREE.Group();
+menuGroup.name = 'menuObject';
+menuGroup.userData.clickable = true;
+menuGroup.userData.action = 'openMenu';
+menuGroup.userData.label = 'Menu · Click to open';
+
+// Book body
+const bookBody = B(0.32, 0.04, 0.24, mat(0x3a1e0e, 0.6, 0.1));
+menuGroup.add(bookBody);
+// Cover top
+const bookCover = B(0.33, 0.006, 0.245, mat(0x2a1408, 0.35, 0.2));
+bookCover.position.y = 0.024; menuGroup.add(bookCover);
+// Spine
+const bookSpine = B(0.015, 0.052, 0.245, mat(0x1a0c04, 0.4, 0.15));
+bookSpine.position.x = -0.165; menuGroup.add(bookSpine);
+// Gold stripe
+const stripe = B(0.008, 0.052, 0.24, mat(0xc8900a, 0.2, 0.8));
+stripe.position.x = -0.148; menuGroup.add(stripe);
+// Pages hint
+const pages = B(0.285, 0.035, 0.232, mat(0xf0ece4, 0.9));
+pages.position.x = 0.01; menuGroup.add(pages);
+
+menuGroup.traverse(c=>{c.castShadow=true;c.receiveShadow=true;});
+place(menuGroup, 2.0, 1.085, -2.2, 0, 0.3, 0);
+scene.add(menuGroup);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PLANTS
+// ══════════════════════════════════════════════════════════════════════════════
+function plant(x,z,sc=1){
+  const pot=C(0.16*sc,0.13*sc,0.28*sc,10,mat(0x2a1e14,0.8));pot.position.set(x,0.14*sc,z);scene.add(pot);
+  const soil=C(0.14*sc,0.14*sc,0.03,10,mat(0x1e1410,0.9));soil.position.set(x,0.3*sc,z);scene.add(soil);
+  const lCols=[0x1e4a18,0x2a5a20,0x163810];
+  for(let i=0;i<6+Math.floor(sc*4);i++){
+    const l=S(((0.08+Math.random()*0.06)*sc),mat(lCols[i%3],0.85),8);
+    l.position.set(x+(Math.random()-.5)*0.22*sc,0.36*sc+i*0.1*sc+Math.random()*0.06,z+(Math.random()-.5)*0.22*sc);
+    scene.add(l);
+  }
+}
+plant(-6.4,-4.7,1.3);plant(6.4,-4.7,1.1);plant(-6.4,4.5,1.0);plant(6.4,4.5,1.2);plant(-6.3,-0.5,0.9);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  LIGHTING
+// ══════════════════════════════════════════════════════════════════════════════
+scene.add(new THREE.AmbientLight(0x2a1a08,0.35));
+scene.add(new THREE.HemisphereLight(0x3a2a14,0x080402,0.25));
+
+function addPendant(x,z,col=0xffd890,intensity=3.0){
+  const cordLen=RH-1.7;
+  const cord=C(0.008,0.008,cordLen,4,mat(0x0a0808,0.9));cord.position.set(x,RH-cordLen/2,z);scene.add(cord);
+  const shadeGeo=new THREE.ConeGeometry(0.22,0.28,16);
+  const shade=new THREE.Mesh(shadeGeo,mat(0xe8e0d4,0.7));shade.position.set(x,1.82,z);shade.castShadow=true;scene.add(shade);
+  const shadeIn=new THREE.Mesh(shadeGeo,mat(0x1a1510,0.9,0,{side:THREE.BackSide}));shadeIn.position.copy(shade.position);scene.add(shadeIn);
+  const can=C(0.065,0.065,0.04,12,M.steelDark);can.position.set(x,RH-0.02,z);scene.add(can);
+  const bulb=S(0.055,mat(0xfffde0,0.1,0,{emissive:0xffee80,emissiveIntensity:2.5}),8);bulb.position.set(x,1.7,z);scene.add(bulb);
+  const pl=new THREE.PointLight(col,intensity,6);pl.position.set(x,1.72,z);pl.castShadow=true;pl.shadow.mapSize.set(512,512);pl.shadow.radius=6;pl.shadow.bias=-0.002;scene.add(pl);
+  return pl;
+}
+addPendant(-4.5,-1.8,0xffcc70,3.5);
+addPendant(-4.5, 1.2,0xffcc70,3.2);
+addPendant(-1.5, 2.8,0xffcc70,3.0);
+addPendant( 1.5,-2.0,0xffd480,4.5);
+addPendant( 3.5,-2.0,0xffd480,4.2);
+addPendant( 5.0,-3.5,0xffe090,2.8);
+addPendant(-0.6,-0.82,0xffdd90,3.5);
+
+// Track rails
+function addTrackRail(x1,z1,x2,z2){
+  const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
+  const r=B(len,0.05,0.055,M.steelDark);r.position.set((x1+x2)/2,RH-0.08,(z1+z2)/2);r.rotation.y=Math.atan2(dx,dz);scene.add(r);
+}
+addTrackRail(-6,-3,6,-3);addTrackRail(-6,0,6,0);addTrackRail(-6,2.5,6,2.5);
+
+function trackHead(x,z,tx,tz,intensity=2.0){
+  const arm=C(0.018,0.018,0.12,6,M.steelDark);arm.rotation.x=Math.PI/6;arm.position.set(x,RH-0.14,z);scene.add(arm);
+  const head=new THREE.Mesh(new THREE.ConeGeometry(0.06,0.11,8),M.steelDark);head.rotation.x=-Math.PI*0.6;head.position.set(x,RH-0.28,z+0.06);scene.add(head);
+  const gl=S(0.022,mat(0xfffde0,0.1,0,{emissive:0xfff0a0,emissiveIntensity:3}),6);gl.position.copy(head.position);scene.add(gl);
+  const sl=new THREE.SpotLight(0xffe8b8,intensity,6.5,Math.PI/8,0.45);sl.position.copy(head.position);sl.target.position.set(tx,0,tz);scene.add(sl);scene.add(sl.target);
+}
+function spot(x,z,tx,tz,intensity=2.5){
+  const h=C(0.065,0.065,0.04,12,M.ceilDark);h.position.set(x,RH-0.02,z);scene.add(h);
+  const sl=new THREE.SpotLight(0xffe8b8,intensity,7,Math.PI/7,0.5);sl.position.set(x,RH-0.05,z);sl.target.position.set(tx,0,tz);sl.castShadow=true;sl.shadow.mapSize.set(256,256);sl.shadow.bias=-0.003;scene.add(sl);scene.add(sl.target);
+}
+function wallSpot(x,y,z,tx,ty,tz,intensity=2.5){
+  const arm=B(0.06,0.06,0.2,M.steelDark);arm.position.set(x,y,z+0.1);scene.add(arm);
+  const head=C(0.055,0.04,0.1,8,M.steelDark);head.rotation.x=Math.PI/2;head.position.set(x,y,z+0.2);scene.add(head);
+  const gl=S(0.025,mat(0xfffde0,0.1,0,{emissive:0xfff0a0,emissiveIntensity:3}),6);gl.position.set(x,y,z+0.25);scene.add(gl);
+  const sl=new THREE.SpotLight(0xffd870,intensity,6,Math.PI/6,0.4);sl.position.set(x,y,z+0.25);sl.target.position.set(tx,ty,tz);scene.add(sl);scene.add(sl.target);
+}
+spot(-5,-3,-4,-2,1.5);spot(-3,-3,-3,-2,1.5);spot(0,-3,1,-2,2.0);spot(2,-3,2,-2,2.0);spot(4,-3,4,-3,1.8);
+trackHead(-4,-3,-4.5,-1.8,2.2);trackHead(-1,0,-1.5,1.2,2.0);trackHead(1,0,1.5,-2.0,2.5);
+trackHead(3,-3,3.0,-3.5,2.0);trackHead(5,0,5.0,0.5,1.8);trackHead(-3,2.5,-4.2,2.5,2.0);trackHead(0,2.5,-1.5,2.8,1.8);
+wallSpot(-5.55,3.1,-4.88,-5.55,2.3,-4.7,2.5);wallSpot(-3.8,3.1,-4.88,-3.8,2.0,-4.7,2.5);
+wallSpot(3.0,3.1,-4.88,3.0,1.9,-4.7,3.5);wallSpot(5.5,3.1,-4.88,5.5,2.0,-4.7,2.0);
+
+const sun=new THREE.DirectionalLight(0xfff5e8,0.55);sun.position.set(2,5,12);sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-10;sun.shadow.camera.right=10;
+sun.shadow.camera.top=6;sun.shadow.camera.bottom=-3;sun.shadow.bias=-0.001;scene.add(sun);scene.add(sun.target);
+
+const cL1=new THREE.PointLight(0xffdd90,3.5,4.5);cL1.position.set(-0.5,1.5,-1.6);scene.add(cL1);
+const cL2=new THREE.PointLight(0xffdd90,2.5,4.0);cL2.position.set(3.0,1.5,-3.5);scene.add(cL2);
+const ledS=new THREE.PointLight(0xffd070,1.8,5);ledS.position.set(1.5,1.15,-4.65);scene.add(ledS);
+
+// ── EXTERIOR ────────────────────────────────────────────────────────────────
+const swalk=B(9,0.08,4,mat(0x4a4540,0.85));swalk.position.set(0,-0.04,RD/2+2);scene.add(swalk);
+const streetAmb=new THREE.PointLight(0x8090c0,1.2,10);streetAmb.position.set(0,3,RD/2+4);scene.add(streetAmb);
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  GLB IMPORT SYSTEM
+//  Placement config per model name:
+//    tables.glb     → left side, centered  (-3.5, 0, 0.5)
+//    bookshelf.glb  → left wall back       (-5.2, 0, -2.5)
+//    sofa.glb       → right side wall      ( 5.2, 0,  1.0)
+//    menu.glb       → counter top          ( 2.0, 1.085, -2.2) + replaces placeholder
+// ══════════════════════════════════════════════════════════════════════════════
+const GLB_PLACEMENTS = {
+  tables:    { pos:[-3.5, 0,  0.5], ry: 0,           scale: 5.5 },
+  bookshelf: { pos:[-5.3, 0, -2.5], ry: Math.PI/2,   scale: 4.0 },
+  sofa:      { pos:[ 5.3, 0,  1.0], ry:-Math.PI/2,   scale: 5.0 },
+  menu:      { pos:[ 2.0, 1.085, -2.2], ry: 0.3,     scale: 0.5, isMenu: true },
+};
+
+const loadedGLBs = {};
+let pendingSlot = null;
+let gltfLoader = null;
+
+// Lazy-load the GLTFLoader script
+function ensureGLTFLoader(cb){
+  if(gltfLoader){ cb(); return; }
+  const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+  s.onload=()=>{ gltfLoader=new THREE.GLTFLoader(); cb(); };
+  document.head.appendChild(s);
+}
+
+window.triggerGLBLoad = function(slot){
+  pendingSlot = slot;
+  ensureGLTFLoader(()=>{
+    const inp = document.getElementById('glb-file-input');
+    inp.click();
+  });
+};
+
+document.getElementById('glb-file-input').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(!file || !pendingSlot) return;
+  const slot = pendingSlot; pendingSlot = null;
+
+  const badge = document.getElementById('badge-'+slot);
+  badge.classList.add('loading');
+  badge.querySelector('.fname').textContent = 'Loading…';
+
+  const url = URL.createObjectURL(file);
+  ensureGLTFLoader(()=>{
+    gltfLoader.load(url, (gltf)=>{
+      // Remove previous model in this slot
+      if(loadedGLBs[slot]){ scene.remove(loadedGLBs[slot]); delete loadedGLBs[slot]; }
+
+      const model = gltf.scene;
+      const cfg = GLB_PLACEMENTS[slot];
+
+      // Auto-scale
+      const bbox = new THREE.Box3().setFromObject(model);
+      const size = bbox.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const s2 = cfg.scale / maxDim;
+      model.scale.setScalar(s2);
+
+      // Floor-plant
+      const bbox2 = new THREE.Box3().setFromObject(model);
+      const center = bbox2.getCenter(new THREE.Vector3());
+      model.position.set(
+        cfg.pos[0] - center.x,
+        cfg.pos[1] - bbox2.min.y,
+        cfg.pos[2] - center.z
+      );
+      model.rotation.y = cfg.ry;
+
+      // Shadows + warm tint
+      model.traverse(child=>{
+        if(child.isMesh){
+          child.castShadow=true; child.receiveShadow=true;
+          if(child.material && child.material.color){
+            const hsl={};child.material.color.getHSL(hsl);
+            child.material.color.setHSL(0.06+hsl.h*0.25,Math.min(1,hsl.s+0.08),hsl.l);
+          }
+        }
+      });
+
+      // For menu.glb: make it clickable, remove placeholder
+      if(cfg.isMenu){
+        model.userData.clickable=true;
+        model.userData.action='openMenu';
+        model.userData.label='Menu · Click to open';
+        scene.remove(menuGroup);
+        clickables = clickables.filter(c=>c!==menuGroup);
+      }
+
+      // Register as clickable if it's the menu
+      if(cfg.isMenu){ clickables.push(model); }
+
+      loadedGLBs[slot] = model;
+      scene.add(model);
+
+      // Badge update
+      badge.classList.remove('loading'); badge.classList.add('loaded');
+      badge.querySelector('.fname').textContent = file.name.length>18?file.name.substring(0,15)+'…':file.name;
+
+      URL.revokeObjectURL(url);
+    }, undefined, (err)=>{
+      console.error(err);
+      badge.classList.remove('loading');
+      badge.querySelector('.fname').textContent = slot+'.glb (error)';
+    });
+  });
+  e.target.value='';
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  MENU OVERLAY
+// ══════════════════════════════════════════════════════════════════════════════
+function openMenu(){
+  document.getElementById('menu-overlay').classList.add('open');
+  // Smooth camera to counter on menu open
+  if(currentCam==='iso'){ cam('counter'); }
+}
+window.closeMenu = function(){
+  document.getElementById('menu-overlay').classList.remove('open');
+};
+document.getElementById('menu-overlay').addEventListener('click',function(e){
+  if(e.target===this) closeMenu();
+});
+addEventListener('keydown',e=>{ if(e.key==='Escape') closeMenu(); });
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  RAYCASTING — HOVER + CLICK INTERACTIONS
+// ══════════════════════════════════════════════════════════════════════════════
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2(-999,-999);
+const tooltip = document.getElementById('tooltip');
+let clickables = [menuGroup];
+
+// Animated hover objects
+const hoverState = new Map();
+
+function getClickableAncestor(obj){
+  let o = obj;
+  while(o){
+    if(o.userData && o.userData.clickable) return o;
+    o = o.parent;
+  }
+  return null;
+}
+
+addEventListener('mousemove', e=>{
+  mouse.x = (e.clientX/innerWidth)*2-1;
+  mouse.y = -(e.clientY/innerHeight)*2+1;
+
+  // Update tooltip position
+  tooltip.style.left = (e.clientX+14)+'px';
+  tooltip.style.top  = (e.clientY-10)+'px';
+});
+
+renderer.domElement.addEventListener('click', e=>{
+  if(isDragging) return;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(scene.children, true);
+  if(hits.length){
+    const hit = hits[0];
+    const ancestor = getClickableAncestor(hit.object);
+    if(ancestor){
+      // Pulse ring
+      const ring = document.createElement('div');
+      ring.className='pulse-ring';
+      ring.style.left=e.clientX+'px'; ring.style.top=e.clientY+'px';
+      document.body.appendChild(ring);
+      setTimeout(()=>ring.remove(),1200);
+
+      if(ancestor.userData.action==='openMenu') openMenu();
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  ANIMATION LOOP
+// ══════════════════════════════════════════════════════════════════════════════
+const clock = new THREE.Clock();
+let menuBookT = 0; // bob animation for the menu book
+
+function animate(){
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Camera animation
+  if(camAnimating && currentCam!=='iso'){
+    camAnimT = Math.min(1, camAnimT+0.018);
+    const ease = 1-Math.pow(1-camAnimT,3);
+    camera.position.lerpVectors(camFrom.pos,camTarget.pos,ease);
+    orbitCenter.lerpVectors(camFrom.look,camTarget.look,ease);
+    camera.lookAt(orbitCenter);
+    if(camAnimT>=1) camAnimating=false;
+  } else if(currentCam==='iso'){
+    updateOrbit();
+  }
+
+  // ── HOVER RAYCASTING ──────────────────────────────────────────────────────
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(scene.children, true);
+  let hoveredClickable = null;
+  if(hits.length){
+    hoveredClickable = getClickableAncestor(hits[0].object);
+  }
+
+  if(hoveredClickable){
+    tooltip.textContent = hoveredClickable.userData.label || 'Click to interact';
+    tooltip.classList.add('show');
+    renderer.domElement.style.cursor = 'pointer';
+    // Float the book up when hovered
+    hoveredClickable.position.y = (hoveredClickable.userData._baseY||1.085) + Math.sin(t*3)*0.008 + 0.018;
+  } else {
+    tooltip.classList.remove('show');
+    renderer.domElement.style.cursor = '';
+    // Return menu book to rest
+    if(menuGroup.parent) menuGroup.position.y = (menuGroup.userData._baseY||1.085) + Math.sin(t*1.2)*0.004;
+  }
+
+  // ── MENU BOOK IDLE ANIMATION ──────────────────────────────────────────────
+  if(menuGroup.parent){
+    menuGroup.userData._baseY = 1.085;
+    menuGroup.rotation.y = 0.3 + Math.sin(t*0.4)*0.04;
+  }
+
+  // ── LIGHT FLICKER (candles / warm spots) ─────────────────────────────────
+  scene.children.forEach(c=>{
+    if(c.isPointLight && c.intensity < 1.5 && c.intensity > 0){
+      c.intensity = 0.55+Math.sin(t*7+c.position.x*30+c.position.z*20)*0.1;
+    }
+  });
+
+  // ── PENDANT GENTLE SWING ─────────────────────────────────────────────────
+  scene.children.forEach(c=>{
+    if(c.isMesh && c.geometry?.type==='ConeGeometry' && c.position.y < 2.2){
+      c.rotation.z = Math.sin(t*0.35+c.position.x)*0.015;
+      c.rotation.x = Math.cos(t*0.28+c.position.z)*0.01;
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── LOADING ──────────────────────────────────────────────────────────────────
+const loadEl=document.getElementById('loading');
+const progEl=document.getElementById('prog');
+let p=0;
+const pI=setInterval(()=>{
+  p=Math.min(100,p+Math.random()*13); progEl.style.width=p+'%';
+  if(p>=100){
+    clearInterval(pI);
+    setTimeout(()=>{
+      loadEl.style.opacity='0';
+      setTimeout(()=>{
+        loadEl.style.display='none';
+        ['title','sub','controls','hint','glb-status'].forEach(id=>document.getElementById(id).classList.add('show'));
+      },1200);
+    },500);
+  }
+},65);
+
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+updateOrbit();
+</script>
+</body>
 </html>
